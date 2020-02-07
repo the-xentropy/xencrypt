@@ -1,5 +1,5 @@
 # Xencrypt
-### PowerShell crypter v 0.1
+### PowerShell crypter v 1.0
 
 ## Authors
 
