@@ -11,7 +11,7 @@ SecForce ( [@SECFORCE_LTD](http://twitter.com/SECFORCE_LTD) )
 Tired of wasting lots of time obfuscating PowerShell scripts like invoke-mimikatz only to have them get detected anyway?
 Wouldn't it be awesome if you could take any script and automatically and with almost no effort generate a near-infinite amount of variants in order to defeat signature-based antivirus detection mechanisms?
 
-WELL, NOW YOU CAN! For the low low price of free! Xencrypt is a PowerShell crypter that uses AES encryption and Gzip/DEFLATE compression to with every invocation generate a completely unique yet functionally equivalent output script given any input script. It does this by compressing and encrypting the input script and storing this data as a payload in a new script which will unencrypt and decompress the payload before running it. In essence, it is to powershell what a PE crypter is.
+WELL, NOW YOU CAN! For the low low price of free! Xencrypt is a PowerShell crypter that uses AES encryption and Gzip/DEFLATE compression to with every invocation generate a completely unique yet functionally equivalent output script given any input script. It does this by compressing and encrypting the input script and storing this data as a payload in a new script which will unencrypt and decompress the payload before running it. In essence, it is to PowerShell what a PE crypter is.
 
 ## In action
 ![Bypass](./bypass.png)
