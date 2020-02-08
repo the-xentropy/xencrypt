@@ -6,6 +6,8 @@
 Xentropy ( [@SamuelAnttila](http://twitter.com/SamuelAnttila) )  
 SecForce ( [@SECFORCE_LTD](http://twitter.com/SECFORCE_LTD) )
 
+If you want to read about the design behind this tool and how to make your own crypter, there's an article I wrote about it here: [Write a crypter in any language](https://netsec.expert/2020/02/06/write-a-crypter-in-any-language.html)
+
 ## Description
 
 Tired of wasting lots of time obfuscating PowerShell scripts like invoke-mimikatz only to have them get detected anyway?
