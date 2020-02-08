@@ -43,7 +43,7 @@ It also supports recursive layering via the -Iterations flag.
 ```
 Invoke-Xencrypt -InFile invoke-mimikatz.ps1 -OutFile xenmimi.ps1 -Iterations 100
 ```
-This will compress and encrypt it 100 times and is useful for dynamic AV bypasses because they have a time-out for analyzing code. There's no fakery here like sleeps that the dynamic scan can skip to get to the end -- it has to go through the entire chain to get to the malicious payload which it usually never does since they usually time out after a second or two.
+This will compress and encrypt it 100 times and is useful for dynamic AV bypasses because they have a time-out for analyzing code. There's no fakery here like sleeps that the dynamic scan can skip to get to the end -- it has to go through the entire chain to get to the malicious payload which it usually never does since they normally time out after a second or two or scanning.
 
 Warning though, the files can get big and generating the output file can take a very long time depending on the scripts and number of iterations requested.
 
