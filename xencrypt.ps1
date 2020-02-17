@@ -16,6 +16,7 @@
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+Set-PSBreakpoint -Variable StackTrace -Mode Write
 $PSDefaultParameterValues['*:ErrorAction']='Stop'
 
 function Create-Var() {
@@ -87,6 +88,9 @@ function Invoke-Xobfuscation {
                 } else {
                     #if a var has already been assgined a new random name, use that one rather than generating a new one
                     $randVar = $variableTracking[$token.Name]
+                    Write-Host $token.Name.Length
+                    Write-Host $code.Substring($start+1, $end-$start).Length
+                    #FIXME: Off by one on REMOVE ...
                     $code = $code.Remove($start+1, $end-$start).Insert($start+1, $randVar)
                     $accumulatedOffset += $randVar.Length-$token.Name.length
                 }
